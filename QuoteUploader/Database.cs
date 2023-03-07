@@ -8,16 +8,15 @@ namespace QuoteUploader{
         public IMongoCollection<BsonDocument> Collection {get; private set;}
   
         // Delete a quote from the database.
-        public void DeleteByQuote(string quote){
-            var deleteFilter = Builders<BsonDocument>.Filter.Eq("quote", quote);
-            Collection.DeleteOne(deleteFilter);
-            Console.WriteLine("Succesfully deleted data from the database collection");
+        public void DeleteQuotes(){
+            Collection.DeleteMany(Builders<BsonDocument>.Filter.Empty);
+            Console.WriteLine($"Succesfully Deleted all Quotes from {Secret.DATABASE_COLLECTION}.");
         }
 
         // Insert to the database
         public void Insert(BsonDocument data){
             Collection.InsertOne(data);
-            Console.WriteLine("Successfully inserted the data.");
+            Console.WriteLine($"Successfully Inserted Data into {Secret.DATABASE_COLLECTION}.");
         }
 
         // Connect to the database.
