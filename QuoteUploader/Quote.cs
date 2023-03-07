@@ -18,7 +18,7 @@ namespace QuoteUploader{
 
         // Constructor that takes in a Quote.
         public Quote(string body){
-            Body = body;
+            Body = body.Replace("\n", "").Replace("\r", "");
             int[] words = GetWordsInfo();
             NumberWords = words[0];
             AverageWordLength = words[1];
