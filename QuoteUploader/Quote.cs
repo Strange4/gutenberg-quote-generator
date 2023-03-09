@@ -18,7 +18,7 @@ namespace QuoteUploader{
 
         // Constructor that takes in a Quote.
         public Quote(string body){
-            Body = body.Replace("\n", "").Replace("\r", "");
+            Body = SetBody(body);
             int[] words = GetWordsInfo();
             NumberWords = words[0];
             AverageWordLength = words[1];
@@ -26,6 +26,13 @@ namespace QuoteUploader{
             NumberCharacters = nbCharacters[0];
             NumberSpecialCharacters = nbCharacters[1];
             Difficulty = SetDifficulty();
+        }
+
+        // Remove all empty lines and tabs or bigger tabs.
+        private string SetBody(string body){
+            string quote = body.Replace("\n", "").Replace("\r", "");
+            const string multiSpace= @"[ ]{2,}";
+            return Regex.Replace(quote.Replace("\t", ""), multiSpace, " ");
         }
 
         // Returns the number of words in the Quote.
