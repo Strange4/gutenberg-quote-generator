@@ -3,12 +3,12 @@ use std::collections::HashMap;
 use reqwest::{self, blocking, Error};
 use serde::Deserialize;
 
-pub fn get_top_book_links(ammount: i32) -> Vec<BookInfo>{
+pub fn get_top_book_links(ammount: u32) -> Vec<BookInfo>{
     const GUTENDEX_URL: &str = "https://gutendex.com/books/";
     let page = get_books(&GUTENDEX_URL.to_string()).unwrap();
     let mut books = page.results;
     // man i wish if left chains were a thing
-    while (books.len() as i32) < ammount {
+    while (books.len() as u32) < ammount {
         match &page.next {
             None => break,
             Some(url) => {
