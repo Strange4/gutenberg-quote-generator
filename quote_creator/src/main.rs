@@ -4,9 +4,9 @@ use futures::{stream, StreamExt};
 use gutendex::BookInfo;
 use rayon::prelude::*;
 use reqwest::Client;
-use std::{fs::File, time::Duration, io::BufRead};
+use std::{fs::File, time::Duration};
 use lazy_static::lazy_static;
-use std::io::{Error, Write, BufReader, Read};
+use std::io::Write;
 use nanorand::Rng;
 use regex::Regex;
 use std::sync::Arc;
@@ -14,19 +14,19 @@ use indicatif::{ProgressBar, ProgressStyle};
 use dialoguer::{theme::ColorfulTheme, Input, Confirm};
 
 const PARALLEL_REQUESTS: usize = 10;
-const BOOKS_FOLDER: &str = "../books_scrapped";
+const BOOKS_FOLDER: &str = "../quotes_scrapped";
 const BOOK_AMMOUNT: u32 = 100;
 
 #[tokio::main]
 async fn main() {
-    let books_to_download = get_number_of_books();
+    let books_to_download = get_number_from_user("Number of books to download?");
+    let number_of_quotes = get_number_from_user("Number of quotes per book?");
     let folder = get_folder();
+
 
     
     let spinner = create_spinner("Getting links".to_string());
-    let books = tokio::task::spawn_blocking(
-        move || gutendex::get_top_book_links(books_to_download))
-        .await.unwrap();
+    let books = gutendex::get_top_book_links(books_to_download).await;
     spinner.finish();
     println!("Getting the books...");
     let progress = Arc::new(
@@ -36,56 +36,47 @@ async fn main() {
         .map(|book| {
             let client = client.clone();
             let progress = progress.clone();
-            let folder = folder.clone();
             tokio::spawn(async {
-                get_book(book, client, progress, folder).await
+                get_book(book, client, progress).await
             })
         })
         .buffer_unordered(PARALLEL_REQUESTS)
         .collect::<Vec<_>>().await;
     progress.finish();
-    // these files will be used later so they will be used to create the quotes
-    let mut files = bodies.into_iter()
+    let book_and_titles = bodies.into_iter()
         .filter_map(|handle|{
             handle.unwrap()
         }).collect::<Vec<_>>();
     let mut done = false;
     while !done {
         let spinner = create_spinner("Creating quotes".to_string());
-        files.par_iter_mut()
-            .for_each(|(ref mut file, title)| {
-                let quotes = book_to_quote(file, 10);
-                write_quotes_to_file(quotes, title, "../quotes");
+        book_and_titles.par_iter()
+            .for_each(|(text, title)| {
+                let quotes = book_to_quote(text, number_of_quotes);
+                write_quotes_to_file(title, &quotes, &folder);
             });
         spinner.finish();
         done = !confirm_dialog("Do you want to regenerate the quotes?");
     }
 }
 
-fn book_to_quote(file: &mut File, number_of_quotes: u32) -> Vec<String> {
-    let mut reader = BufReader::new(file);
-    let mut text = String::new();
-    reader.read_to_string(&mut text).unwrap();
+fn book_to_quote(text: &String, number_of_quotes: u32) -> Vec<String> {
     let chars = text
         .chars()
         .collect::<Vec<_>>();
-    (0..=number_of_quotes).map(|_|{
-        let r_number = nanorand::tls_rng().generate_range(0..chars.len());
-        let beginning = (0..r_number)
-        .rev()
+    (0..number_of_quotes).map(|_|{
+        let length = chars.len() - 1;
+        let r_number = nanorand::tls_rng().generate_range(0..length);
+        let beginning = (r_number..length)
         .find(|index| {
             is_end_char(&chars[*index])
-        }).unwrap();
-        let end = (r_number..chars.len())
+        }).unwrap_or(0) + 1;
+        let end = (beginning..length)
         .find(|index| {
             is_end_char(&chars[*index])
-        }).unwrap();
-        String::from(&text[beginning..end])
+        }).unwrap_or(length - 1) + 1;
+        chars[beginning..end].iter().collect()
     }).collect()
-}
-
-fn write_quotes_to_file(quotes: Vec<String>, title: &str, folder: &str){
-    // todo
 }
 
 fn is_end_char(character: &char) -> bool{
@@ -98,23 +89,20 @@ fn is_end_char(character: &char) -> bool{
 }
 
 
-async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>, save_folder: String) -> Option<(File, String)>{
+async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>) -> Option<(String, String)>{
     let response = client.get(&book.guten_url)
     .send().await.unwrap();
-    progress.inc(1);
-    if response.status().is_success() {
-        let text = response.text()
-            .await.unwrap();
-        let book_text = parse_book(text.as_str());
-        let file = write_book_to_file(&book.title, book_text, save_folder)
-            .unwrap();
-        progress.inc(1);
-        return Some((file, book.title));
+    if !response.status().is_success(){
+        return None;
     }
-    None
+    let text = response.text()
+        .await.unwrap();
+    let book_text = parse_book(&text);
+    progress.inc(1);
+    Some((book_text, book.title))
 }
 
-fn parse_book(text: &str) -> &str {
+fn parse_book(text: &String) -> String {
     lazy_static! {
         static ref START_SEPARATOR: Regex = Regex::new("\\*\\*\\* START OF TH.* \\*\\*\\*")
             .expect("the regex is not nice");
@@ -124,16 +112,17 @@ fn parse_book(text: &str) -> &str {
         .collect();
     let beginning = lines[1];
     let book = END_SEPARATOR.split(beginning).collect::<Vec<_>>()[0];
-    book.trim()
+    book.trim().to_string()
 }
 
-fn write_book_to_file(title: &String, book: &str, mut folder: String) -> Result<File, Error>{
-    folder.push('/');
-    folder.push_str(&clean_file_name(title));
-    folder.push_str(".txt");
-    let mut file = File::create(folder)?;
-    file.write_all(book.as_bytes())?;
-    Ok(file)
+fn write_quotes_to_file(title: &String, quotes: &Vec<String>, folder: &String){
+    let mut path = folder.clone();
+    path.push('/');
+    path.push_str(&clean_file_name(title));
+    path.push_str(".txt");
+    let mut file = File::create(path).unwrap();
+    let quotes = quotes.join("");
+    file.write_all(quotes.as_bytes()).unwrap();
 }
 
 fn clean_file_name(title: &String) -> String{
@@ -146,7 +135,7 @@ fn clean_file_name(title: &String) -> String{
 }
 
 fn create_progress_bar(books_to_download: u32) -> ProgressBar {
-    let progress = ProgressBar::new(books_to_download as u64 * 2);
+    let progress = ProgressBar::new(books_to_download as u64);
     progress.enable_steady_tick(Duration::from_millis(120));
     progress.set_style(
         ProgressStyle::with_template(
@@ -193,9 +182,9 @@ fn confirm_dialog(message: &str) -> bool{
     .unwrap()
 }
 
-fn get_number_of_books() -> u32{
+fn get_number_from_user(message: &str) -> u32{
     Input::with_theme(&ColorfulTheme::default())
-        .with_prompt("Enter the number of books to download")
+        .with_prompt(message)
         .default(BOOK_AMMOUNT)
         .interact_text()
         .unwrap()
