@@ -2,14 +2,16 @@ mod gutendex;
 
 use futures::{stream, StreamExt};
 use gutendex::BookInfo;
+use rayon::prelude::*;
 use reqwest::Client;
-use std::{fs::File, time::Duration};
+use std::{fs::File, time::Duration, io::BufRead};
 use lazy_static::lazy_static;
-use std::io::{Error, Write};
+use std::io::{Error, Write, BufReader, Read};
+use nanorand::Rng;
 use regex::Regex;
 use std::sync::Arc;
 use indicatif::{ProgressBar, ProgressStyle};
-use dialoguer::{theme::ColorfulTheme, Input};
+use dialoguer::{theme::ColorfulTheme, Input, Confirm};
 
 const PARALLEL_REQUESTS: usize = 10;
 const BOOKS_FOLDER: &str = "../books_scrapped";
@@ -43,17 +45,60 @@ async fn main() {
         .collect::<Vec<_>>().await;
     progress.finish();
     // these files will be used later so they will be used to create the quotes
-    let files = bodies.into_iter()
-        .map(|handle| {
-            handle.unwrap()
-        })
+    let mut files = bodies.into_iter()
         .filter_map(|handle|{
-            handle
+            handle.unwrap()
         }).collect::<Vec<_>>();
-    
+    let mut done = false;
+    while !done {
+        let spinner = create_spinner("Creating quotes".to_string());
+        files.par_iter_mut()
+            .for_each(|(ref mut file, title)| {
+                let quotes = book_to_quote(file, 10);
+                write_quotes_to_file(quotes, title, "../quotes");
+            });
+        spinner.finish();
+        done = !confirm_dialog("Do you want to regenerate the quotes?");
+    }
 }
 
-async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>, save_folder: String) -> Option<File>{
+fn book_to_quote(file: &mut File, number_of_quotes: u32) -> Vec<String> {
+    let mut reader = BufReader::new(file);
+    let mut text = String::new();
+    reader.read_to_string(&mut text).unwrap();
+    let chars = text
+        .chars()
+        .collect::<Vec<_>>();
+    (0..=number_of_quotes).map(|_|{
+        let r_number = nanorand::tls_rng().generate_range(0..chars.len());
+        let beginning = (0..r_number)
+        .rev()
+        .find(|index| {
+            is_end_char(&chars[*index])
+        }).unwrap();
+        let end = (r_number..chars.len())
+        .find(|index| {
+            is_end_char(&chars[*index])
+        }).unwrap();
+        String::from(&text[beginning..end])
+    }).collect()
+}
+
+fn write_quotes_to_file(quotes: Vec<String>, title: &str, folder: &str){
+    // todo
+}
+
+fn is_end_char(character: &char) -> bool{
+    match character {
+        '.' => true,
+        '!' => true,
+        '?' => true,
+        _ => false
+    }
+}
+
+
+async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>, save_folder: String) -> Option<(File, String)>{
     let response = client.get(&book.guten_url)
     .send().await.unwrap();
     progress.inc(1);
@@ -64,9 +109,9 @@ async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>, sa
         let file = write_book_to_file(&book.title, book_text, save_folder)
             .unwrap();
         progress.inc(1);
-        return Some(file);
+        return Some((file, book.title));
     }
-    None::<File>
+    None
 }
 
 fn parse_book(text: &str) -> &str {
@@ -88,8 +133,6 @@ fn write_book_to_file(title: &String, book: &str, mut folder: String) -> Result<
     folder.push_str(".txt");
     let mut file = File::create(folder)?;
     file.write_all(book.as_bytes())?;
-    // why do i have to flush???
-    // file.flush().await?;
     Ok(file)
 }
 
@@ -121,6 +164,7 @@ fn create_progress_bar(books_to_download: u32) -> ProgressBar {
     );
     progress
 }
+
 fn create_spinner(message: String) -> ProgressBar{
     let pb = ProgressBar::new_spinner();
     pb.enable_steady_tick(Duration::from_millis(100));
@@ -141,6 +185,13 @@ fn create_spinner(message: String) -> ProgressBar{
     pb
 }
 
+fn confirm_dialog(message: &str) -> bool{
+    Confirm::with_theme(&ColorfulTheme::default())
+    .with_prompt(message)
+    .default(false)
+    .interact()
+    .unwrap()
+}
 
 fn get_number_of_books() -> u32{
     Input::with_theme(&ColorfulTheme::default())
