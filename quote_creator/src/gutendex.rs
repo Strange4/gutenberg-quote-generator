@@ -1,19 +1,18 @@
 use std::collections::HashMap;
 
-use reqwest::{self, blocking, Error};
+use reqwest::Client;
 use serde::Deserialize;
 
-pub fn get_top_book_links(ammount: u32) -> Vec<BookInfo>{
+pub async fn get_top_book_links(ammount: u32) -> Vec<BookInfo>{
     const GUTENDEX_URL: &str = "https://gutendex.com/books/";
-    let page = get_books(&GUTENDEX_URL.to_string()).unwrap();
+    let client = Client::new();
+    let page = get_books(&GUTENDEX_URL.to_string(), &client).await;
     let mut books = page.results;
-    // man i wish if left chains were a thing
     while (books.len() as u32) < ammount {
         match &page.next {
             None => break,
             Some(url) => {
-                let mut page = get_books(url)
-                    .unwrap();
+                let mut page = get_books(url, &client).await;
                 books.append(&mut page.results);
             }
         }
@@ -40,10 +39,12 @@ fn try_get_url(book: &GutenBook) -> String{
     panic!("there are no formats that match");
 }
 
-fn get_books(page_url: &String) -> Result<GutenPage, Error>{
-    let page = blocking::get(page_url)?
-        .json::<GutenPage>()?;
-    Ok(page)
+async fn get_books(page_url: &String, client: &Client) -> GutenPage{
+    client.get(page_url)
+        .send()
+        .await.unwrap()
+        .json::<GutenPage>()
+        .await.unwrap()
 }
 
 #[derive(Deserialize)]
