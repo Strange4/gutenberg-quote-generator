@@ -1,19 +1,17 @@
 mod gutendex;
+mod creator;
 
 use futures::{stream, StreamExt};
-use gutendex::BookInfo;
 use rayon::prelude::*;
 use reqwest::Client;
-use std::{fs::File, time::Duration};
-use lazy_static::lazy_static;
-use std::io::Write;
-use nanorand::Rng;
-use regex::Regex;
-use std::sync::Arc;
+use std::time::Duration;
+use creator::{get_book, book_to_quote, write_quotes_to_file};
 use indicatif::{ProgressBar, ProgressStyle};
 use dialoguer::{theme::ColorfulTheme, Input, Confirm};
+use std::sync::Arc;
 
-const PARALLEL_REQUESTS: usize = 10;
+
+pub const PARALLEL_REQUESTS: usize = 10;
 const BOOKS_FOLDER: &str = "../quotes_scrapped";
 const BOOK_AMMOUNT: u32 = 100;
 
@@ -58,80 +56,6 @@ async fn main() {
         spinner.finish();
         done = !confirm_dialog("Do you want to regenerate the quotes?");
     }
-}
-
-fn book_to_quote(text: &String, number_of_quotes: u32) -> Vec<String> {
-    let chars = text
-        .chars()
-        .collect::<Vec<_>>();
-    (0..number_of_quotes).map(|_|{
-        let length = chars.len() - 1;
-        let r_number = nanorand::tls_rng().generate_range(0..length);
-        let beginning = (r_number..length)
-        .find(|index| {
-            is_end_char(&chars[*index])
-        }).unwrap_or(0) + 1;
-        let end = (beginning..length)
-        .find(|index| {
-            is_end_char(&chars[*index])
-        }).unwrap_or(length - 1) + 1;
-        chars[beginning..end].iter().collect()
-    }).collect()
-}
-
-fn is_end_char(character: &char) -> bool{
-    match character {
-        '.' => true,
-        '!' => true,
-        '?' => true,
-        _ => false
-    }
-}
-
-
-async fn get_book(book: BookInfo, client: Client, progress: Arc<ProgressBar>) -> Option<(String, String)>{
-    let response = client.get(&book.guten_url)
-    .send().await.unwrap();
-    if !response.status().is_success(){
-        return None;
-    }
-    let text = response.text()
-        .await.unwrap();
-    let book_text = parse_book(&text);
-    progress.inc(1);
-    Some((book_text, book.title))
-}
-
-fn parse_book(text: &String) -> String {
-    lazy_static! {
-        static ref START_SEPARATOR: Regex = Regex::new("\\*\\*\\* START OF TH.* \\*\\*\\*")
-            .expect("the regex is not nice");
-        static ref END_SEPARATOR: Regex = Regex::new("\\*\\*\\* END OF TH.* \\*\\*\\*").expect("this regex is invalid");
-    }
-    let lines: Vec<&str> = START_SEPARATOR.split(text)
-        .collect();
-    let beginning = lines[1];
-    let book = END_SEPARATOR.split(beginning).collect::<Vec<_>>()[0];
-    book.trim().to_string()
-}
-
-fn write_quotes_to_file(title: &String, quotes: &Vec<String>, folder: &String){
-    let mut path = folder.clone();
-    path.push('/');
-    path.push_str(&clean_file_name(title));
-    path.push_str(".txt");
-    let mut file = File::create(path).unwrap();
-    let quotes = quotes.join("");
-    file.write_all(quotes.as_bytes()).unwrap();
-}
-
-fn clean_file_name(title: &String) -> String{
-    const ILLEGAL_CHARS: &[char] = &[
-        '<', '>', '*', '?', '/',
-        '"', ':', '|', '\\',
-    ];
-
-    title.replace(&ILLEGAL_CHARS[..], "")
 }
 
 fn create_progress_bar(books_to_download: u32) -> ProgressBar {

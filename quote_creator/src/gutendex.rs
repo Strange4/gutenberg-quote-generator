@@ -1,31 +1,45 @@
 use std::collections::HashMap;
 
+use futures::{stream, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;
+use crate::PARALLEL_REQUESTS;
 
 pub async fn get_top_book_links(ammount: u32) -> Vec<BookInfo>{
-    const GUTENDEX_URL: &str = "https://gutendex.com/books/";
+    const GUTENDEX_URL: &str = "https://gutendex.com/books/?page=";
+    const BOOKS_PER_PAGE: u32 = 32;
     let client = Client::new();
-    let page = get_books(&GUTENDEX_URL.to_string(), &client).await;
-    let mut books = page.results;
-    while (books.len() as u32) < ammount {
-        match &page.next {
-            None => break,
-            Some(url) => {
-                let mut page = get_books(url, &client).await;
-                books.append(&mut page.results);
+    let number_of_pages = (ammount / BOOKS_PER_PAGE) + 1;
+    let results = stream::iter(1..=number_of_pages)
+        .map(|index|{
+            let client = client.clone();
+            tokio::spawn(async move {
+                let mut url = GUTENDEX_URL
+                    .to_string();
+                url.push_str(index.to_string().as_str());
+                get_books(&url, &client).await
+            })
+        })
+        .buffer_unordered(PARALLEL_REQUESTS)
+        .collect::<Vec<_>>().await;
+    
+    let mut books = results.into_iter()
+        .map(|result|{
+            result.unwrap().results
+        }).flatten()
+        .map(|book| {
+            match try_get_url(&book) {
+                Some(url) => {Some(BookInfo { title: book.title, guten_url: url })},
+                None => None
             }
-        }
-    }
-    let mut books = books.into_iter().map(|book| {
-        let url = try_get_url(&book);
-        BookInfo { title: book.title, guten_url: url }
-    }).collect::<Vec<_>>();
+        })
+        .filter_map(|maybe_book|{ maybe_book })
+        .collect::<Vec<_>>();
     books.truncate(ammount as usize);
     books
 }
 
-fn try_get_url(book: &GutenBook) -> String{
+fn try_get_url(book: &GutenBook) -> Option<String>{
     const TXT_FORMATS: &[&str] = &[
         "text/plain", 
         "text/plain; charset=us-ascii",
@@ -33,10 +47,10 @@ fn try_get_url(book: &GutenBook) -> String{
         ];
     for format in TXT_FORMATS.into_iter(){
         if let Some(url) = book.formats.get(*format) {
-            return url.clone();
+            return Some(url.clone());
         }
     }
-    panic!("there are no formats that match");
+    None
 }
 
 async fn get_books(page_url: &String, client: &Client) -> GutenPage{
@@ -44,12 +58,11 @@ async fn get_books(page_url: &String, client: &Client) -> GutenPage{
         .send()
         .await.unwrap()
         .json::<GutenPage>()
-        .await.unwrap()
+        .await.expect(&page_url)
 }
 
 #[derive(Deserialize)]
 struct GutenPage{
-    next: Option<String>,
     results: Vec<GutenBook>
 }
 
