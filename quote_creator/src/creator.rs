@@ -69,8 +69,7 @@ pub fn parse_book(text: &String) -> Option<String> {
     Some(book.trim().to_string())
 }
 
-pub fn write_quotes_to_file(title: &String, quotes: &Vec<String>, folder: &String){
-    let title = &mut title.clone();
+pub fn write_quotes_to_file(title: &mut String, quotes: &Vec<String>, folder: &String){
     let mut path = folder.clone();
     path.push('/');
     path.push_str(&clean_file_name(title));

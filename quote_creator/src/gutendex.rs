@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-
 use futures::{stream, StreamExt};
 use reqwest::Client;
 use serde::Deserialize;

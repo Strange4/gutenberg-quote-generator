@@ -41,16 +41,16 @@ async fn main() {
         .buffer_unordered(PARALLEL_REQUESTS)
         .collect::<Vec<_>>().await;
     progress.finish();
-    let book_and_titles = bodies.into_iter()
+    let mut book_and_titles = bodies.into_iter()
         .filter_map(|handle|{
             handle.unwrap()
         }).collect::<Vec<_>>();
     let mut done = false;
     while !done {
         let spinner = create_spinner("Creating quotes".to_string());
-        book_and_titles.par_iter()
-            .for_each(|(text, title)| {
-                let quotes = book_to_quote(text, number_of_quotes);
+        book_and_titles.par_iter_mut()
+            .for_each(|(text, ref mut title)| {
+                let quotes = book_to_quote(&text, number_of_quotes);
                 write_quotes_to_file(title, &quotes, &folder);
             });
         spinner.finish();
