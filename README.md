@@ -19,6 +19,7 @@ Replace all your information with your database below in the public static strin
     // The name of the Collection.
     public static readonly string DATABASE_COLLECTION = "TestCollection";
 
+Before running the program make sure to put all your txt files in the QuoteText folder.
 To run the program, go inside the QuoteUploader directory and simply type dotnet run in your terminal.
 The program will prompt you to type the name of the txt file, like mention above.
 The program will parse the content and upload that parse data to the database.
