@@ -54,7 +54,7 @@ namespace QuoteUploader
             try{
                 // Get the txt file to parse data.
                 string sCurrentDirectory = AppDomain.CurrentDomain.BaseDirectory;
-                string fileName = @"..\..\..\QuoteText\" + txtName + ".txt";              
+                string fileName = @"..\..\..\..\quotes_scrapped\" + txtName + ".txt";              
                 string sFile = System.IO.Path.Combine(sCurrentDirectory, fileName);
                 string sFilePath = Path.GetFullPath(sFile);
 

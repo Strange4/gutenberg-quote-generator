@@ -31,6 +31,13 @@ namespace QuoteUploader{
         // Remove all empty lines and tabs or bigger tabs.
         private string SetBody(string body){
             string quote = body.Replace("\n", "").Replace("\r", "");
+            if (quote[0] == ' '){
+                string tempQuote = "";
+                for (int i = 1; i < quote.Length; i++){
+                    tempQuote += quote[i];
+                }
+                quote = tempQuote;
+            }
             const string multiSpace= @"[ ]{2,}";
             return Regex.Replace(quote.Replace("\t", ""), multiSpace, " ");
         }
