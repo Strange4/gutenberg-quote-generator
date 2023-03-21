@@ -30,14 +30,22 @@ namespace QuoteUploader{
 
         // Remove all empty lines and tabs or bigger tabs.
         private string SetBody(string body){
-            string quote = body.Replace("\n", " ").Replace("\r", " ");
-            if (quote[0] == ' '){
-                string tempQuote = "";
-                for (int i = 1; i < quote.Length; i++){
+            string quote = body.Replace("\n", " ").Replace("\r", " ").Replace("—", " ");
+            bool start = false;
+            string tempQuote = "";
+
+            // We have this method to make sure we do not start adding up the letters until the sentence starts with a actual letter and not a space.
+            for (int i = 0; i < quote.Length; i++){
+                if (!start){
+                    if (quote[i] != ' '){
+                        start = true;
+                        tempQuote += quote[i];
+                    }
+                } else{
                     tempQuote += quote[i];
                 }
-                quote = tempQuote;
             }
+            quote = tempQuote;
             const string multiSpace= @"[ ]{2,}";
             return Regex.Replace(quote.Replace("\t", ""), multiSpace, " ");
         }
