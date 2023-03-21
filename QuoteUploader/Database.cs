@@ -21,7 +21,7 @@ namespace QuoteUploader{
 
         // Connect to the database.
         public void Connect(){
-            var settings = MongoClientSettings.FromConnectionString(Secret.ATLAS_URI_TEST);
+            var settings = MongoClientSettings.FromConnectionString(Secret.ATLAS_URI);
             settings.ServerApi = new ServerApi(ServerApiVersion.V1);
             var client = new MongoClient(settings);
             var database = client.GetDatabase(Secret.DATABASE_NAME);
