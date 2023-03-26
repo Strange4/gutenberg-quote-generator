@@ -30,7 +30,7 @@ namespace QuoteUploader{
 
         // Remove all empty lines and tabs or bigger tabs.
         private string SetBody(string body){
-            string quote = body.Replace("\n", " ").Replace("\r", " ").Replace("—", " ");
+            string quote = body.Replace("\n", " ").Replace("\r", " ").Replace("—", " ").Replace("‘", "'").Replace("“", "\"").Replace("”", "\"");
             bool start = false;
             string tempQuote = "";
 
